@@ -1,0 +1,94 @@
+version: "3"
+services:
+  vote:
+    image: pitong/vote:latest
+    ports:
+      - 5000:80
+    networks:
+      - front-tier1
+    depends_on:
+      - redis
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+    
+  redis:
+    image: redis:alpine
+    networks:
+      - front-tier1
+      - back-tier
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+  
+  worker:
+    image: pitong/worker:latest
+    depends_on:
+      - redis
+      - db
+    networks:
+      - back-tier
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels: [APP=VOTING]
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+      #placement:
+        #constraints: [node.role == manager]
+  
+  db:
+    image: postgres:9.4
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - back-tier
+      - front-tier2
+    #deploy:
+      #placement:
+        #constraints: [node.role == manager]
+      
+  result:
+    image: pitong/result:latest
+    ports:
+      - 5001:80
+    depends_on:
+      - db
+    networks:
+      - front-tier2
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+  
+  visualizer:
+    image: dockersamples/visualizer:stable
+    ports:
+      - "8080:8080"
+    stop_grace_period: 1m30s
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+volumes:
+  db-data:
+  
+networks:
+  front-tier1:
+  back-tier:
+  front-tier2:
